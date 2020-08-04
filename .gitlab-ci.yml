@@ -39,10 +39,6 @@ variables:
     - buildah commit $CTR ${IMAGE}
     - buildah login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
     - buildah push ${IMAGE}
-  only:
-    - triggers
-    - schedules
-  retry: 1
 
 pitivi:master:
   stage: docker_image
