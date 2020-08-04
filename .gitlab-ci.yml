@@ -12,15 +12,20 @@ variables:
 
 
 .docker_image_template:
-  tags:
-    - privileged
-  image: docker:latest
+  image: registry.fedoraproject.org/fedora:32
   variables:
-    DOCKER_DRIVER: overlay2
-    DOCKER_TLS_CERTDIR: ""
-  services:
-    - docker:19.03.0-dind
+    STORAGE_DRIVER: 'vfs'
+    BUILDAH_FORMAT: 'docker'
+    BUILDAH_ISOLATION: 'chroot'
   script:
+    - dnf install -y buildah podman runc
+    - sed -i '/^mountopt =.*/d' /etc/containers/storage.conf
+    - |
+      cat >> /etc/containers/libpod.conf << END
+      cgroup_manager = "cgroupfs"
+      events_logger = "file"
+      END
+
     - export IMAGE="${CI_REGISTRY}/${NAMESPACE}/${CI_PROJECT_NAME}:${BRANCH}-sdk_3.34"
     - export BASE_IMAGE="registry.gitlab.gnome.org/gnome/gnome-runtime-images/gnome:3.34"
     - export TMPIMAGENAME="tmp-pitivi-${BRANCH}-sdk_3.34"
@@ -29,12 +34,11 @@ variables:
     - export BUILD_PITIVI="flatpak-builder --user --disable-rofiles-fuse ${BUILDDIR}/app ${BUILDDIR}/build/flatpak/org.pitivi.Pitivi.json --state-dir=\${HOME}/flatpak-cache --ccache"
 
     - env
-
-    - docker run --privileged --name ${TMPIMAGENAME} ${BASE_IMAGE} bash -c "${CLONE_PITIVI} && ${BUILD_PITIVI} && rm -Rf ${BUILDDIR}"
-    - docker commit ${TMPIMAGENAME} ${IMAGE}
-    - docker rm ${TMPIMAGENAME}
-    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
-    - docker push ${IMAGE}
+    - CTR=$(buildah from ${BASE_IMAGE})
+    - buildah run $CTR bash -c "${CLONE_PITIVI} && ${BUILD_PITIVI} && rm -Rf ${BUILDDIR}"
+    - buildah commit $CTR ${IMAGE}
+    - buildah login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+    - buildah push ${IMAGE}
   only:
     - triggers
     - schedules
